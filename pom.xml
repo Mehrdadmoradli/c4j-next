@@ -9,10 +9,10 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.Mehrdadmoradli</groupId>
-    <artifactId>jcontract</artifactId>
+    <artifactId>c4j-next</artifactId>
     <version>0.1.0-SNAPSHOT</version>
 
-    <name>JContract</name>
+    <name>C4J Next</name>
 
     <description>
         A lightweight Design by Contract framework for modern Java, powered by Byte Buddy.
@@ -80,7 +80,7 @@
 
                                     <manifestEntries>
                                         <Premain-Class>
-                                            io.github.Mehrdadmoradli.jcontract.agent.JContractAgent
+                                            io.github.Mehrdadmoradli.c4jnext.agent.C4JNextAgent
                                         </Premain-Class>
                                     </manifestEntries>
 
@@ -92,6 +92,25 @@
                 </executions>
             </plugin>
 
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.5.2</version>
+                <configuration>
+                    <systemPropertyVariables>
+                        <agentJar>${project.build.directory}/${project.build.finalName}.jar</agentJar>
+                        <fixtureClasses>${project.build.testOutputDirectory}</fixtureClasses>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 

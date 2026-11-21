@@ -1,2 +1,10 @@
-io\github\Mehrdadmoradli\jcontract\agent\test.class
-io\github\Mehrdadmoradli\jcontract\agent\JContractAgent.class
+io\github\Mehrdadmoradli\c4jnext\ContractReference.class
+io\github\Mehrdadmoradli\c4jnext\UsageError.class
+io\github\Mehrdadmoradli\c4jnext\agent\C4JNextAgent.class
+io\github\Mehrdadmoradli\c4jnext\ClassInvariant.class
+io\github\Mehrdadmoradli\c4jnext\Target.class
+io\github\Mehrdadmoradli\c4jnext\agent\C4JNextAgent$1.class
+io\github\Mehrdadmoradli\c4jnext\Condition.class
+io\github\Mehrdadmoradli\c4jnext\Contract$InheritedType.class
+io\github\Mehrdadmoradli\c4jnext\ContractError.class
+io\github\Mehrdadmoradli\c4jnext\Contract.class
