@@ -12,7 +12,7 @@ The checkout contains three distinct systems. A successful launch of one cannot 
 
 | Location | What is present | Reproduction implications |
 |---|---|---|
-| Root | Maven artifact `io.github.Mehrdadmoradli:c4j-next:0.1.0-SNAPSHOT`. Compiler release 25, Byte Buddy 1.18.15, JUnit Jupiter 5.11.4, Surefire 3.5.2 and Shade 3.6.0. | The manifest selects `C4JNextAgent`. Its current action is printing a startup message. The README is empty and the committed target directory includes generated jars. |
+| Root | Maven artifact `io.github.Mehrdadmoradli:c4j-next:0.1.0-SNAPSHOT`. Compiler release 25, Byte Buddy 1.18.15, JUnit Jupiter 5.11.4, Surefire 3.5.2 and Shade 3.6.0. | The manifest selects `C4JNextAgent`. Its current action is printing a startup message. The root README has been removed and the committed target directory includes generated jars. |
 | Pinned dbcagent checkout | Mathis Stein's proof of concept at `221b2971bdde196628488a2f07ca99b4b4fe9c0a`. The analyzed local checkout had a comment-only diff in ContractUtils.java. Source/target 22, Byte Buddy and byte-buddy-agent 1.18.5, Objenesis 3.5, Shade 3.5.0. | Separate POM. Shade sets `Premain-Class` to DbCAgent and also names a Main class absent from the sources. Launch an application with `-ea -javaagent:<shaded-jar>`. Running the jar as the application is a different operation. |
 | Pinned C4J 6.0.0 checkout | C4J tag `6.0.0`, commit `c874e8ecf91b1369ca97bea27e4c3cfc060dab63`. The original analysis used its unpacked distribution with .java and .class files, manifest, schemas, and embedded Maven metadata. | The embedded POM declares Java 1.6 and Javassist 3.16.1-GA. The manifest names Javassist 3.18.1-GA. The upstream repository also contains acceptance and system tests. |
 
