@@ -1,16 +1,16 @@
-package io.github.Mehrdadmoradli.jcontract.agent;
+package io.github.Mehrdadmoradli.c4jnext.agent;
 
 import java.lang.instrument.Instrumentation;
 
-public final class JContractAgent {
+public final class C4JNextAgent {
 
-    private JContractAgent() {
+    private C4JNextAgent() {
     }
 
     public static void premain(
             String agentArgs,
             Instrumentation instrumentation) {
 
-        System.out.println("JContract agent started");
+        System.out.println("C4J Next agent started");
     }
 }
