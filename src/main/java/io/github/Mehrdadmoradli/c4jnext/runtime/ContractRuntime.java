@@ -12,24 +12,21 @@ public final class ContractRuntime {
     private ContractRuntime() {}
 
     public static InvocationContext enter(Object target, Method method, Object[] arguments) {
-        var outer = current();
-        if (outer != null && outer.phase != BODY) {
+        if (evaluating()) {
             return null;
         }
+        var binding = ContractExecutor.bindingFor(method.getDeclaringClass());
+        var invariants = ContractExecutor.invariantBindingsFor(method.getDeclaringClass());
         var checks = ContractExecutor.checksFor(method);
-        if (checks == null) {
+        if (checks == null && invariants.isEmpty()) {
             return null;
         }
-        var frame = new InvocationContext(target, method, arguments, checks);
-        var stack = INVOCATIONS.get();
-        if (stack == null) {
-            stack = new ArrayDeque<>();
-            INVOCATIONS.set(stack);
-        }
-        stack.push(frame);
+        var frame = new InvocationContext(target, binding, arguments, checks, invariants, false);
+        push(frame);
         boolean entered = false;
         try {
-            if (checks.pre()) {
+            checkInvariants(frame);
+            if (checks != null && checks.pre()) {
                 frame.phase = PRE;
                 ContractExecutor.evaluate(frame);
             }
@@ -48,13 +45,47 @@ public final class ContractRuntime {
             return;
         }
         try {
-            if (thrown == null && frame.checks.post()) {
-                frame.phase = POST;
-                frame.result = result;
-                ContractExecutor.evaluate(frame);
+            if (thrown == null) {
+                if (frame.checks != null && frame.checks.post()) {
+                    frame.phase = POST;
+                    frame.result = result;
+                    ContractExecutor.evaluate(frame);
+                }
+                checkInvariants(frame);
             }
         } finally {
             pop();
+        }
+    }
+
+    static boolean evaluating() {
+        var frame = current();
+        return frame != null && frame.phase != BODY;
+    }
+
+    static void checkConstructed(Object target) {
+        var invariants = ContractExecutor.invariantBindingsFor(target.getClass());
+        if (invariants.isEmpty()) {
+            return;
+        }
+        var frame = new InvocationContext(target, null, new Object[0], null, invariants, true);
+        push(frame);
+        try {
+            checkInvariants(frame);
+        } finally {
+            pop();
+        }
+    }
+
+    private static void checkInvariants(InvocationContext frame) {
+        if (frame.invariants.isEmpty() || (!frame.constructor && ConstructionRuntime.isConstructing(frame.target))) {
+            return;
+        }
+        frame.phase = INVARIANT;
+        for (var binding : frame.invariants) {
+            for (var method : binding.invariants()) {
+                ContractExecutor.evaluate(frame, binding, method);
+            }
         }
     }
 
@@ -76,6 +107,15 @@ public final class ContractRuntime {
     private static InvocationContext current() {
         var stack = INVOCATIONS.get();
         return stack == null ? null : stack.peek();
+    }
+
+    private static void push(InvocationContext frame) {
+        var stack = INVOCATIONS.get();
+        if (stack == null) {
+            stack = new ArrayDeque<>();
+            INVOCATIONS.set(stack);
+        }
+        stack.push(frame);
     }
 
     private static void pop() {

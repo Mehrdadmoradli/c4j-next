@@ -23,6 +23,9 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <byte-buddy.version>1.18.15</byte-buddy.version>
+        <!-- The class reader must support Java 25; the analyzer uses the ASM 9 visitor API. -->
+        <asm.version>9.10.1</asm.version>
+        <asm-commons.version>9.7</asm-commons.version>
         <junit.version>5.11.4</junit.version>
     </properties>
 
@@ -32,6 +35,18 @@
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy</artifactId>
             <version>${byte-buddy.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm</artifactId>
+            <version>${asm.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-commons</artifactId>
+            <version>${asm-commons.version}</version>
         </dependency>
 
         <dependency>
@@ -62,6 +77,13 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>3.6.0</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.ow2.asm</groupId>
+                        <artifactId>asm</artifactId>
+                        <version>${asm.version}</version>
+                    </dependency>
+                </dependencies>
 
                 <executions>
                     <execution>
@@ -73,6 +95,13 @@
 
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+
+                            <relocations>
+                                <relocation>
+                                    <pattern>org.objectweb.asm</pattern>
+                                    <shadedPattern>io.github.Mehrdadmoradli.c4jnext.internal.asm</shadedPattern>
+                                </relocation>
+                            </relocations>
 
                             <transformers>
                                 <transformer implementation=

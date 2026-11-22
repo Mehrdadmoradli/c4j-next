@@ -2,6 +2,7 @@ package io.github.Mehrdadmoradli.c4jnext.agent;
 
 import java.lang.instrument.Instrumentation;
 import io.github.Mehrdadmoradli.c4jnext.annotations.ContractReference;
+import io.github.Mehrdadmoradli.c4jnext.runtime.ConstructionRuntime;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
@@ -23,27 +24,41 @@ public final class C4JNextAgent {
                 .disableClassFormatChanges()
                 .with(new AgentBuilder.Listener.Adapter() {
                     @Override
+                    public void onTransformation(TypeDescription type, ClassLoader loader, JavaModule module,
+                                                 boolean loaded, DynamicType dynamicType) {
+                        ConstructionRuntime.register(loader, type.getName(), dynamicType.getBytes());
+                    }
+
+                    @Override
                     public void onError(String typeName, ClassLoader loader, JavaModule module,
                                         boolean loaded, Throwable error) {
                         System.err.println("C4J Next could not transform " + typeName + " (loader " + loader + ")");
                         error.printStackTrace(System.err);
                     }
                 })
-                .type(isAnnotatedWith(ContractReference.class)
-                        .and(not(isInterface())).and(not(isAbstract())))
-                .transform((builder, type, loader, module, domain) -> builder.visit(Advice.to(MethodAdvice.class)
-                        .on(isMethod().and(isDeclaredBy(type))
-                                .and(not(isStatic().or(isPrivate()).or(isAbstract()).or(isNative())
-                                        .or(isBridge()).or(isSynthetic()))))));
+                .type(hasSuperType(isAnnotatedWith(ContractReference.class).and(not(isInterface())))
+                        .and(not(isInterface())))
+                .transform((builder, type, loader, module, domain) -> {
+                    var withConstructors = builder.visit(ConstructorAdvice.forType(type.getName(), loader));
+                    if (type.isAbstract() || !type.getDeclaredAnnotations().isAnnotationPresent(ContractReference.class)) {
+                        return withConstructors;
+                    }
+                    return withConstructors.visit(Advice.to(MethodAdvice.class)
+                            .on(isMethod().and(isDeclaredBy(type))
+                                    .and(not(isStatic().or(isPrivate()).or(isAbstract()).or(isNative())
+                                            .or(isBridge()).or(isSynthetic())))));
+                });
 
         if ("debug".equals(agentArgs)) {
             agent = agent.with(new AgentBuilder.Listener.Adapter() {
                 @Override
                 public void onTransformation(TypeDescription type, ClassLoader loader, JavaModule module,
                                              boolean loaded, DynamicType dynamicType) {
-                    TypeDescription contract = type.getDeclaredAnnotations().ofType(ContractReference.class)
-                            .getValue("value").resolve(TypeDescription.class);
-                    System.err.println("C4J Next discovered " + type.getName() + " -> " + contract.getName());
+                    var association = type.getDeclaredAnnotations().ofType(ContractReference.class);
+                    if (association != null && !type.isAbstract()) {
+                        TypeDescription contract = association.getValue("value").resolve(TypeDescription.class);
+                        System.err.println("C4J Next discovered " + type.getName() + " -> " + contract.getName());
+                    }
                 }
             });
         }
