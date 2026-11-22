@@ -3,6 +3,7 @@ package io.github.Mehrdadmoradli.c4jnext.agent;
 import java.lang.instrument.Instrumentation;
 import io.github.Mehrdadmoradli.c4jnext.annotations.ContractReference;
 import io.github.Mehrdadmoradli.c4jnext.runtime.ConstructionRuntime;
+import io.github.Mehrdadmoradli.c4jnext.runtime.OldExpressionTransformer;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
@@ -20,6 +21,7 @@ public final class C4JNextAgent {
             String agentArgs,
             Instrumentation instrumentation) {
 
+        instrumentation.addTransformer(new OldExpressionTransformer());
         AgentBuilder agent = new AgentBuilder.Default()
                 .disableClassFormatChanges()
                 .with(new AgentBuilder.Listener.Adapter() {

@@ -23,13 +23,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 final class ContractExecutor {
-    record Checks(Method method, boolean pre, boolean post) {}
+    record Checks(Method method, boolean pre, boolean post, List<OldValueStore.Capture> captures) {}
 
     record Binding(Class<?> targetType, Class<?> contractType, List<Method> invariants) {}
 
-    private record Phases(boolean pre, boolean post) {}
+    private record Phases(boolean pre, boolean post, int oldSites) {}
 
-    private static final Checks NONE = new Checks(null, false, false);
+    private static final Checks NONE = new Checks(null, false, false, List.of());
     private static final String CONDITION = Condition.class.descriptorString();
     private static final ClassValue<ConcurrentMap<Method, Checks>> CHECKS = new ClassValue<>() {
         @Override
@@ -90,8 +90,9 @@ final class ContractExecutor {
                     continue;
                 }
                 var phases = phasesOf(candidate);
+                var captures = OldValueStore.prepare(candidate, targetType, phases.post(), phases.oldSites());
                 return phases.pre() || phases.post()
-                        ? new Checks(candidate, phases.pre(), phases.post())
+                        ? new Checks(candidate, phases.pre(), phases.post(), captures)
                         : NONE;
             }
         }
@@ -138,13 +139,18 @@ final class ContractExecutor {
         for (var method : classFileOf(contract).methods()) {
             Method invariant = annotated.get(method.methodName().stringValue() + method.methodType().stringValue());
             if (invariant != null) {
+                for (var instruction : method.code().orElseThrow()) {
+                    if (instruction instanceof InvokeInstruction call && isOld(call)) {
+                        throw new UsageError("old() is supported in method postconditions only: " + invariant);
+                    }
+                }
                 ordered.add(invariant);
             }
         }
         return List.copyOf(ordered);
     }
 
-    private static String descriptor(Method method) {
+    static String descriptor(Method method) {
         return MethodType.methodType(method.getReturnType(), method.getParameterTypes()).descriptorString();
     }
 
@@ -157,20 +163,29 @@ final class ContractExecutor {
             }
             boolean pre = false;
             boolean post = false;
+            int oldSites = 0;
             for (var element : candidate.code().orElseThrow()) {
                 if (element instanceof InvokeInstruction call
-                        && call.owner().asSymbol().descriptorString().equals(CONDITION)
-                        && call.type().equalsString("()Z")) {
-                    pre |= call.name().equalsString("preCondition");
-                    post |= call.name().equalsString("postCondition");
+                        && call.owner().asSymbol().descriptorString().equals(CONDITION)) {
+                    if (call.type().equalsString("()Z")) {
+                        pre |= call.name().equalsString("preCondition");
+                        post |= call.name().equalsString("postCondition");
+                    } else if (isOld(call)) {
+                        oldSites++;
+                    }
                 }
             }
-            return new Phases(pre, post);
+            return new Phases(pre, post, oldSites);
         }
         throw new UsageError("Cannot find contract bytecode for " + method);
     }
 
-    private static ClassModel classFileOf(Class<?> owner) {
+    private static boolean isOld(InvokeInstruction call) {
+        return call.owner().asSymbol().descriptorString().equals(CONDITION)
+                && call.name().equalsString("old") && call.type().equalsString(OldExpressionTransformer.OLD_DESCRIPTOR);
+    }
+
+    static ClassModel classFileOf(Class<?> owner) {
         String resource = "/" + owner.getName().replace('.', '/') + ".class";
         try (var bytes = owner.getResourceAsStream(resource)) {
             if (bytes == null) {

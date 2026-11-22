@@ -7,7 +7,7 @@ import java.util.Map;
 
 public final class InvocationContext {
     enum Phase {
-        PRE("pre-condition"), BODY(""), POST("post-condition"), INVARIANT("class-invariant");
+        PRE("pre-condition"), CAPTURE("old"), BODY(""), POST("post-condition"), INVARIANT("class-invariant");
 
         final String label;
 
@@ -25,6 +25,7 @@ public final class InvocationContext {
     final boolean constructor;
     final Map<Class<?>, Object> contracts = new HashMap<>();
     Phase phase = Phase.BODY;
+    OldValueStore oldValues;
     Object result;
     Throwable throwable;
 

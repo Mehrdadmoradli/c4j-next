@@ -20,4 +20,9 @@ public class Condition {
     public static <T> T result(Class<T> returnType) {
         return result();
     }
+
+    /** Returns the entry value of a supported expression in an instrumented postcondition. */
+    public static <T> T old(T expression) {
+        throw new UsageError("old() requires a supported expression directly in an instrumented postcondition");
+    }
 }

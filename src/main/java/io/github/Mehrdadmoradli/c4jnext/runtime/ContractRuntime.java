@@ -1,5 +1,7 @@
 package io.github.Mehrdadmoradli.c4jnext.runtime;
 
+import io.github.Mehrdadmoradli.c4jnext.UsageError;
+
 import java.lang.reflect.Method;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -31,6 +33,11 @@ public final class ContractRuntime {
             if (checks != null && checks.pre()) {
                 frame.phase = PRE;
                 ContractExecutor.evaluate(frame);
+            }
+            if (checks != null && !checks.captures().isEmpty()) {
+                frame.phase = CAPTURE;
+                frame.oldValues = new OldValueStore();
+                frame.oldValues.save(checks.captures(), target);
             }
             frame.phase = BODY;
             entered = true;
@@ -106,6 +113,16 @@ public final class ContractRuntime {
     public static Object result() {
         var frame = current();
         return frame != null && frame.phase == POST ? frame.result : null;
+    }
+
+    /** Called by rewritten old() sites in contract bytecode. */
+    public static Object oldValue(Class<?> owner, String site) {
+        var frame = current();
+        if (frame == null || frame.phase != POST || frame.oldValues == null) {
+            throw new UsageError("old() is only available in an active contract postcondition: "
+                    + owner.getName() + "." + site);
+        }
+        return frame.oldValues.get(owner, site);
     }
 
     static InvocationContext current() {
