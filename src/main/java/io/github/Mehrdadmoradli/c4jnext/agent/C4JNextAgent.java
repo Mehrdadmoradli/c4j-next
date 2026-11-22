@@ -1,8 +1,9 @@
 package io.github.Mehrdadmoradli.c4jnext.agent;
 
 import java.lang.instrument.Instrumentation;
-import io.github.Mehrdadmoradli.c4jnext.ContractReference;
+import io.github.Mehrdadmoradli.c4jnext.annotations.ContractReference;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.utility.JavaModule;
@@ -20,9 +21,20 @@ public final class C4JNextAgent {
 
         AgentBuilder agent = new AgentBuilder.Default()
                 .disableClassFormatChanges()
+                .with(new AgentBuilder.Listener.Adapter() {
+                    @Override
+                    public void onError(String typeName, ClassLoader loader, JavaModule module,
+                                        boolean loaded, Throwable error) {
+                        System.err.println("C4J Next could not transform " + typeName + " (loader " + loader + ")");
+                        error.printStackTrace(System.err);
+                    }
+                })
                 .type(isAnnotatedWith(ContractReference.class)
                         .and(not(isInterface())).and(not(isAbstract())))
-                .transform((builder, type, loader, module, domain) -> builder);
+                .transform((builder, type, loader, module, domain) -> builder.visit(Advice.to(MethodAdvice.class)
+                        .on(isMethod().and(isDeclaredBy(type))
+                                .and(not(isStatic().or(isPrivate()).or(isAbstract()).or(isNative())
+                                        .or(isBridge()).or(isSynthetic()))))));
 
         if ("debug".equals(agentArgs)) {
             agent = agent.with(new AgentBuilder.Listener.Adapter() {

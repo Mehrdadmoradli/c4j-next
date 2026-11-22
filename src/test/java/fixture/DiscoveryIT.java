@@ -17,12 +17,16 @@ class DiscoveryIT {
     record Output(List<String> stdout, List<String> stderr) {}
 
     private Output launch(boolean agent) throws Exception {
+        return launchFixture(temp, "fixture.DiscoveryApp", agent, true);
+    }
+
+    static Output launchFixture(Path temp, String mainClass, boolean agent, boolean debug) throws Exception {
         String jar = System.getProperty("agentJar");
         var command = new ArrayList<>(List.of(
                 Path.of(System.getProperty("java.home"), "bin", "java").toString(), "-ea"));
-        if (agent) command.add("-javaagent:" + jar + "=debug");
+        if (agent) command.add("-javaagent:" + jar + (debug ? "=debug" : ""));
         command.addAll(List.of("-cp", System.getProperty("fixtureClasses") + File.pathSeparator + jar,
-                "fixture.DiscoveryApp"));
+                mainClass));
         Path out = temp.resolve(agent + ".out");
         Path err = temp.resolve(agent + ".err");
         Process child = new ProcessBuilder(command)

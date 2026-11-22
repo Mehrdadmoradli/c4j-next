@@ -1,6 +1,6 @@
 package fixture;
 
-import io.github.Mehrdadmoradli.c4jnext.ContractReference;
+import io.github.Mehrdadmoradli.c4jnext.annotations.ContractReference;
 
 public class DiscoveryApp {
     @ContractReference(BankAccountContract.class)
