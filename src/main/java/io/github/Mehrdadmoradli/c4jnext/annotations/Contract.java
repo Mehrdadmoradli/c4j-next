@@ -1,4 +1,4 @@
-package io.github.Mehrdadmoradli.c4jnext;
+package io.github.Mehrdadmoradli.c4jnext.annotations;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
@@ -8,6 +8,8 @@ import java.lang.annotation.RetentionPolicy;
 @Documented
 @Retention(RetentionPolicy.CLASS)
 @java.lang.annotation.Target(ElementType.TYPE)
-public @interface ContractReference {
-    Class<?> value();
+public @interface Contract {
+    Class<?> forTarget() default InheritedType.class;
+
+    interface InheritedType {}
 }

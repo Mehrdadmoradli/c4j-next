@@ -1,17 +1,20 @@
 package io.github.Mehrdadmoradli.c4jnext;
 
-/** Entry points used by contract methods. Day 1 has no active evaluation phase. */
+import io.github.Mehrdadmoradli.c4jnext.runtime.ContractRuntime;
+
+/** Entry points used by contract methods. */
 public class Condition {
     public static boolean preCondition() {
-        return false;
+        return ContractRuntime.preCondition();
     }
 
     public static boolean postCondition() {
-        return false;
+        return ContractRuntime.postCondition();
     }
 
+    @SuppressWarnings("unchecked")
     public static <T> T result() {
-        return null;
+        return (T) ContractRuntime.result();
     }
 
     public static <T> T result(Class<T> returnType) {
