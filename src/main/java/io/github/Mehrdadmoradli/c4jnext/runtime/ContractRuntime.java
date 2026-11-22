@@ -12,6 +12,8 @@ public final class ContractRuntime {
     private ContractRuntime() {}
 
     public static InvocationContext enter(Object target, Method method, Object[] arguments) {
+        // Calls from contract code run their bodies under the active evaluation.
+        // Calls from application bodies enter normally and get their own frame.
         if (evaluating()) {
             return null;
         }
@@ -21,7 +23,7 @@ public final class ContractRuntime {
         if (checks == null && invariants.isEmpty()) {
             return null;
         }
-        var frame = new InvocationContext(target, binding, arguments, checks, invariants, false);
+        var frame = new InvocationContext(target, method, binding, arguments, checks, invariants, false);
         push(frame);
         boolean entered = false;
         try {
@@ -45,14 +47,16 @@ public final class ContractRuntime {
             return;
         }
         try {
-            if (thrown == null) {
-                if (frame.checks != null && frame.checks.post()) {
-                    frame.phase = POST;
-                    frame.result = result;
-                    ContractExecutor.evaluate(frame);
-                }
-                checkInvariants(frame);
+            frame.throwable = thrown;
+            if (frame.throwable != null) {
+                return;
             }
+            frame.result = result;
+            if (frame.checks != null && frame.checks.post()) {
+                frame.phase = POST;
+                ContractExecutor.evaluate(frame);
+            }
+            checkInvariants(frame);
         } finally {
             pop();
         }
@@ -68,7 +72,7 @@ public final class ContractRuntime {
         if (invariants.isEmpty()) {
             return;
         }
-        var frame = new InvocationContext(target, null, new Object[0], null, invariants, true);
+        var frame = new InvocationContext(target, null, null, new Object[0], null, invariants, true);
         push(frame);
         try {
             checkInvariants(frame);
@@ -104,7 +108,7 @@ public final class ContractRuntime {
         return frame != null && frame.phase == POST ? frame.result : null;
     }
 
-    private static InvocationContext current() {
+    static InvocationContext current() {
         var stack = INVOCATIONS.get();
         return stack == null ? null : stack.peek();
     }
