@@ -29,11 +29,7 @@ public final class ContractRuntime {
         try {
             checkInvariants(frame);
             frame.phase = PRE;
-            for (var check : plan.checks()) {
-                if (check.pre()) {
-                    ContractExecutor.evaluate(frame, check.binding(), check.method(), frame.arguments);
-                }
-            }
+            ContractExecutor.evaluatePreconditions(frame);
             frame.phase = CAPTURE;
             for (var check : plan.checks()) {
                 if (!check.captures().isEmpty()) {

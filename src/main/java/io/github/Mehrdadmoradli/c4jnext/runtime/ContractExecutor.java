@@ -62,11 +62,28 @@ final class ContractExecutor {
             }
             var phases = phasesOf(candidate);
             var captures = OldValueStore.prepare(candidate, binding.targetType(), phases.post(), phases.oldSites());
-            if (phases.pre() || phases.post()) {
-                checks.add(new MethodContractPlan.Check(binding, candidate, phases.pre(), phases.post(), captures));
+            boolean pre = phases.pre() && !strengthensInheritedPrecondition(binding, candidate);
+            if (pre || phases.post()) {
+                checks.add(new MethodContractPlan.Check(binding, candidate, pre, phases.post(), captures));
             }
         }
         return new MethodContractPlan(checks, withInvariants(bindings));
+    }
+
+    private static boolean strengthensInheritedPrecondition(ContractBinding binding, Method method) {
+        // C4J's default "undefined" policy tests the declarations of other contracted involved types.
+        for (var ancestor : ContractResolver.bindingsFor(binding.targetType())) {
+            if (ancestor.targetType() == binding.targetType()) {
+                continue;
+            }
+            try {
+                ancestor.targetType().getDeclaredMethod(method.getName(), method.getParameterTypes());
+                return true;
+            } catch (NoSuchMethodException absent) {
+                // This contracted ancestor does not declare the signature.
+            }
+        }
+        return false;
     }
 
     private static List<ContractBinding> withInvariants(List<ContractBinding> bindings) {
@@ -179,22 +196,73 @@ final class ContractExecutor {
         }
     }
 
+    static void evaluatePreconditions(InvocationContext frame) {
+        boolean passed = false;
+        Throwable lastFailure = null;
+        for (var check : frame.plan.checks()) {
+            // C4J counts an entry dependency such as old() as an applicable precondition.
+            if (!check.pre() && check.captures().isEmpty()) {
+                continue;
+            }
+            Throwable failure = null;
+            try {
+                if (check.pre()) {
+                    invoke(frame, check.binding(), check.method(), frame.arguments);
+                } else {
+                    contractInstance(frame, check.binding());
+                }
+            } catch (Throwable cause) {
+                failure = cause;
+            }
+            if (failure == null) {
+                if (lastFailure != null) {
+                    throw ContractViolationFactory.lspViolation();
+                }
+                passed = true;
+            } else {
+                if (passed) {
+                    throw ContractViolationFactory.lspViolation();
+                }
+                lastFailure = failure;
+            }
+        }
+        if (lastFailure != null) {
+            throw ContractViolationFactory.violation(frame.phase, lastFailure);
+        }
+    }
+
     static void evaluate(InvocationContext frame, ContractBinding binding, Method method, Object... arguments) {
         try {
-            Object contract = frame.contracts.get(binding.targetType());
-            if (contract == null) {
-                contract = newContract(binding, frame.target);
-                frame.contracts.put(binding.targetType(), contract);
-            }
+            invoke(frame, binding, method, arguments);
+        } catch (Throwable failure) {
+            throw ContractViolationFactory.violation(frame.phase, failure);
+        }
+    }
+
+    private static void invoke(InvocationContext frame, ContractBinding binding, Method method, Object[] arguments)
+            throws Throwable {
+        Object contract = contractInstance(frame, binding);
+        try {
             if (!method.trySetAccessible()) {
                 throw new IllegalAccessException(method.toString());
             }
             method.invoke(contract, arguments);
         } catch (InvocationTargetException failure) {
-            throw ContractViolationFactory.violation(frame.phase, failure.getCause());
-        } catch (Throwable failure) {
-            throw ContractViolationFactory.violation(frame.phase, failure);
+            throw failure.getCause();
         }
+    }
+
+    private static Object contractInstance(InvocationContext frame, ContractBinding binding) throws Throwable {
+        Object contract = frame.contracts.get(binding.targetType());
+        if (contract == null) {
+            try {
+                contract = newContract(binding, frame.target);
+            } catch (InvocationTargetException failure) {
+                throw failure.getCause();
+            }
+            frame.contracts.put(binding.targetType(), contract);
+        }
+        return contract;
     }
 
     private static Object newContract(ContractBinding binding, Object target) throws ReflectiveOperationException {

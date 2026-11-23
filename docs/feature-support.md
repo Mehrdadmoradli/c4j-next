@@ -1,10 +1,12 @@
 # C4J Next feature support
 
-Phase 6 results for the Java 25 prototype. Integration tests launch the packaged agent in a separate JVM.
+Phase 7 results for the Java 25 prototype. Integration tests launch the packaged agent in a separate JVM. See the [thesis checkpoint](thesis-freeze.md) for the evaluated inputs and reference comparison.
+
+Implemented and partial rows cite passing tests for the scope stated. Failing means a test contradicts a claimed behavior. Unsupported means the prototype lacks the behavior. Not tested means the behavior has no qualifying evidence. Not applicable means the behavior falls outside the evaluated feature definition. Only implemented or partial scope contributes passing evidence.
 
 | ID | Feature | Current evidence |
 |---|---|---|
-| 1 | Preconditions | Implemented for the tested instance methods. [MethodContractsIT](../src/test/java/fixture/MethodContractsIT.java) verifies rejection before mutation and recovery. [InheritanceIT](../src/test/java/fixture/InheritanceIT.java) verifies inherited checks in discovery order. |
+| 1 | Preconditions | Implemented for the tested instance methods. [MethodContractsIT](../src/test/java/fixture/MethodContractsIT.java) verifies rejection before mutation and recovery. [CompositionIT](../src/test/java/fixture/CompositionIT.java) verifies inherited applicability and outcome handling. |
 | 2 | Postconditions | Implemented for normal returns on the tested instance methods. [MethodContractsIT](../src/test/java/fixture/MethodContractsIT.java) verifies passing and failing checks. [InheritanceIT](../src/test/java/fixture/InheritanceIT.java) verifies inherited checks on normal return. |
 | 3 | Class invariants | Partial. [InvariantIT](../src/test/java/fixture/InvariantIT.java) verifies method entry and normal exit, superclass and declaration order, and re-entry protection. [InheritanceIT](../src/test/java/fixture/InheritanceIT.java) verifies an interface invariant at method and construction boundaries. Entry evaluation differs from C4J 6.0.0. Purity-based skipping remains pending. |
 | 4 | result() | Implemented for normal returns. [MethodContractsIT](../src/test/java/fixture/MethodContractsIT.java) verifies all primitive types, reference identity, null, void, and cleanup. [InvocationIsolationIT](../src/test/java/fixture/InvocationIsolationIT.java) verifies isolation across nested, recursive, and concurrent calls. |
@@ -14,16 +16,16 @@ Phase 6 results for the Java 25 prototype. Integration tests launch the packaged
 | 8 | old() | Partial. [OldExpressionsIT](../src/test/java/fixture/OldExpressionsIT.java) verifies the [supported postcondition expressions](#old-expressions), reference identity, deferred capture failure, and isolation across nested, recursive, and concurrent calls. |
 | 9 | Superclass contract inheritance | Implemented for the [tested method boundaries](#inheritance-and-method-boundaries). [InheritanceIT](../src/test/java/fixture/InheritanceIT.java) covers overrides, multiple superclass levels, and inherited implementations. |
 | 10 | Interface contract inheritance | Partial. [InheritanceIT](../src/test/java/fixture/InheritanceIT.java) covers direct, inherited, and diamond interface associations, including implementations inherited from a superclass. Default-only bodies and newly applicable checks on inherited final methods have no extra boundary. |
-| 11 | Contract merging | Partial. [InheritanceIT](../src/test/java/fixture/InheritanceIT.java) verifies ordered plans and sequential checks for successful mixed inheritance calls. C4J failure composition remains Phase 7 work. |
-| 12 | LSP behavior | Unsupported. Phase 7 will classify disagreement between applicable preconditions. |
-| 13 | unchanged() | Unsupported in Day 1. |
+| 11 | Contract merging | Partial. [CompositionIT](../src/test/java/fixture/CompositionIT.java) verifies vertical, horizontal, and mixed checks, their order, and failure handling at one method boundary. Cross-boundary and deeper failure combinations have no parity claim. |
+| 12 | LSP behavior | Implemented for the [tested composition scope](thesis-freeze.md#composition-evidence). [CompositionIT](../src/test/java/fixture/CompositionIT.java) verifies both orders of conflicting outcomes, the ordinary all-failure result, and suppression of strengthening preconditions. |
+| 13 | unchanged() | Unsupported. |
 | 14 | Exceptional method execution | Unsupported for exceptional contract checks and helpers. [InvocationIsolationIT](../src/test/java/fixture/InvocationIsolationIT.java) verifies that exceptional exits clear the frame, skip normal postconditions, and preserve the original application throwable. |
-| 15 | @Pure | Unsupported in Day 1. |
-| 16 | Static method contracts | Unsupported in Day 1. |
-| 17 | ignored() | Unsupported in Day 1. |
-| 18 | maxTime() | Unsupported in Day 1. |
-| 19 | Advanced inheritance | Unsupported in Day 1. |
-| 20 | External contract discovery | Unsupported in Day 1. |
+| 15 | @Pure | Unsupported. |
+| 16 | Static method contracts | Unsupported. |
+| 17 | ignored() | Unsupported. |
+| 18 | maxTime() | Unsupported. |
+| 19 | Advanced inheritance | Not tested for C4J-compatible failure composition across deeper hierarchies. The basic diamond discovery evidence is in row 10. |
+| 20 | External contract discovery | Unsupported. |
 
 ## Old expressions
 
@@ -80,8 +82,11 @@ its existing checks. An explicit application call to `super` also enters the
 superclass boundary. Interface default methods with no class override and
 newly applicable checks on inherited final methods have no delegate.
 
-Within each boundary, Phase 6 evaluates checks in plan order and reports the
-first failure. Phase 7 adds C4J's precondition outcome aggregation and LSP
-diagnostic. Malformed bindings use `UsageError`. This prototype requires a
+Within each boundary, the runtime aggregates applicable precondition outcomes,
+reports the last failure if all fail, and reports an LSP violation as soon as
+the outcomes disagree. A precondition on a descendant contract is omitted
+when a contracted ancestor already declares the method. Postconditions and
+invariants run in plan order and stop at the first violation. Malformed
+bindings use `UsageError`. This prototype requires a
 concrete contract class assignable to its annotated type, while the pinned C4J
 source can warn and continue for some non-inheriting contract classes.

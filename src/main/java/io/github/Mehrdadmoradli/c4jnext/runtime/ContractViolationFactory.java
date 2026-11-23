@@ -9,6 +9,11 @@ import java.util.IdentityHashMap;
 final class ContractViolationFactory {
     private ContractViolationFactory() {}
 
+    static Error lspViolation() {
+        return violation(InvocationContext.Phase.PRE, new AssertionError(
+                "LSP Violation: Invalid multiple inheritance, as two pre-conditions returned different results."));
+    }
+
     static Error violation(InvocationContext.Phase phase, Throwable failure) {
         if (failure instanceof AssertionError assertion) {
             String detail = assertion.getMessage();

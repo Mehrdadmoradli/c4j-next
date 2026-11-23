@@ -294,7 +294,7 @@ public final class InheritanceApp {
     public static void main(String[] args) throws Exception {
         Root leaf = new Leaf();
         assert ((Integer) leaf.move(4)) == 4;
-        events("third:pre", "right:pre", "left:pre", "shared:pre", "middle:pre", "root:pre",
+        events("third:pre", "shared:pre", "root:pre",
                 "leaf:body", "third:post", "right:post", "left:post", "shared:post", "middle:post", "root:post");
 
         assert leaf.move("2").intValue() == 2;
@@ -303,7 +303,7 @@ public final class InheritanceApp {
         assert new Inherited().move(3).intValue() == 3;
         events("root:pre", "root:body", "root:post");
         assert new Middle().move(3).intValue() == 3;
-        events("middle:pre", "root:pre", "root:body", "root:post", "middle:post");
+        events("root:pre", "root:body", "root:post", "middle:post");
         assert new AddedInterface().move(3).intValue() == 3;
         events("shared:pre", "root:pre", "root:body", "root:post", "shared:post");
         assert new InheritedFromPlain().move(3).intValue() == 3;
@@ -314,7 +314,7 @@ public final class InheritanceApp {
         expect(AssertionError.class, () -> inheritedAgain.move(-1), "negative amount (pre-condition)");
         events();
         assert new InheritedMiddle().move(3).intValue() == 3;
-        events("shared:pre", "middle:pre", "root:pre", "root:body", "root:post", "middle:post", "shared:post");
+        events("shared:pre", "root:pre", "root:body", "root:post", "middle:post", "shared:post");
 
         assert new FinalInherited().move(3).intValue() == 3;
         events("final-inherited:body");
