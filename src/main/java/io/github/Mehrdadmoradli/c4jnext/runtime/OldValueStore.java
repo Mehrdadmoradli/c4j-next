@@ -108,7 +108,8 @@ final class OldValueStore {
         int modifiers = injected.getModifiers();
         if (!injected.isAnnotationPresent(Target.class) || Modifier.isStatic(modifiers)
                 || Modifier.isFinal(modifiers) || declaring == targetType
-                || !targetType.isAssignableFrom(declaring) || !declaring.isAssignableFrom(owner)
+                || (!targetType.isInterface() && !targetType.isAssignableFrom(declaring))
+                || !declaring.isAssignableFrom(owner)
                 || !injected.getType().isAssignableFrom(targetType)) {
             throw new IllegalArgumentException("receiver must be the contract's injected @Target field");
         }

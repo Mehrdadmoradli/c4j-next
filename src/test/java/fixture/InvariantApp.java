@@ -278,7 +278,7 @@ public class InvariantApp {
         assert premium.limit() == 10;
         events("first:3", "second:3", "premium", "first:3", "second:3", "premium");
         new UnannotatedPremium();
-        events("first:3", "second:3", "premium");
+        events("premium", "first:3", "second:3");
         expectApplicationFailure(() -> new Child(true));
         events();
         var child = new Child();

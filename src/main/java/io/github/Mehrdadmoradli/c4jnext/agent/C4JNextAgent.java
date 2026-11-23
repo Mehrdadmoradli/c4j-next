@@ -23,7 +23,8 @@ public final class C4JNextAgent {
 
         instrumentation.addTransformer(new OldExpressionTransformer());
         AgentBuilder agent = new AgentBuilder.Default()
-                .disableClassFormatChanges()
+                .with(AgentBuilder.TypeStrategy.Default.REDEFINE)
+                .with(AgentBuilder.InitializationStrategy.NoOp.INSTANCE)
                 .with(new AgentBuilder.Listener.Adapter() {
                     @Override
                     public void onTransformation(TypeDescription type, ClassLoader loader, JavaModule module,
@@ -38,17 +39,15 @@ public final class C4JNextAgent {
                         error.printStackTrace(System.err);
                     }
                 })
-                .type(hasSuperType(isAnnotatedWith(ContractReference.class).and(not(isInterface())))
-                        .and(not(isInterface())))
+                .type(hasSuperType(isAnnotatedWith(ContractReference.class)).and(not(isInterface())))
                 .transform((builder, type, loader, module, domain) -> {
-                    var withConstructors = builder.visit(ConstructorAdvice.forType(type.getName(), loader));
-                    if (type.isAbstract() || !type.getDeclaredAnnotations().isAnnotationPresent(ContractReference.class)) {
-                        return withConstructors;
-                    }
-                    return withConstructors.visit(Advice.to(MethodAdvice.class)
+                    var withBoundaries = builder.visit(ConstructorAdvice.forType(type.getName(), loader))
+                            .visit(Advice.withCustomMapping().bind(MethodAdvice.Delegate.class, false)
+                                    .to(MethodAdvice.class)
                             .on(isMethod().and(isDeclaredBy(type))
                                     .and(not(isStatic().or(isPrivate()).or(isAbstract()).or(isNative())
                                             .or(isBridge()).or(isSynthetic())))));
+                    return InheritedMethodDelegates.addTo(withBoundaries, type);
                 });
 
         if ("debug".equals(agentArgs)) {

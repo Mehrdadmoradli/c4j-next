@@ -3,7 +3,6 @@ package io.github.Mehrdadmoradli.c4jnext.runtime;
 import io.github.Mehrdadmoradli.c4jnext.Condition;
 import io.github.Mehrdadmoradli.c4jnext.UsageError;
 import io.github.Mehrdadmoradli.c4jnext.annotations.ClassInvariant;
-import io.github.Mehrdadmoradli.c4jnext.annotations.ContractReference;
 import io.github.Mehrdadmoradli.c4jnext.annotations.Target;
 
 import java.io.IOException;
@@ -23,102 +22,83 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 final class ContractExecutor {
-    record Checks(Method method, boolean pre, boolean post, List<OldValueStore.Capture> captures) {}
-
-    record Binding(Class<?> targetType, Class<?> contractType, List<Method> invariants) {}
-
+    private record Boundary(Method method, boolean delegate) {}
     private record Phases(boolean pre, boolean post, int oldSites) {}
 
-    private static final Checks NONE = new Checks(null, false, false, List.of());
     private static final String CONDITION = Condition.class.descriptorString();
-    private static final ClassValue<ConcurrentMap<Method, Checks>> CHECKS = new ClassValue<>() {
+    private static final ClassValue<ConcurrentMap<Boundary, MethodContractPlan>> PLANS = new ClassValue<>() {
         @Override
-        protected ConcurrentMap<Method, Checks> computeValue(Class<?> type) {
+        protected ConcurrentMap<Boundary, MethodContractPlan> computeValue(Class<?> type) {
             return new ConcurrentHashMap<>();
         }
     };
-    private static final ClassValue<Binding> BINDINGS = new ClassValue<>() {
+    private static final ClassValue<MethodContractPlan> CONSTRUCTOR_PLANS = new ClassValue<>() {
         @Override
-        protected Binding computeValue(Class<?> type) {
-            var reference = type.getDeclaredAnnotation(ContractReference.class);
-            if (reference == null) {
-                return new Binding(type, null, List.of());
-            }
-            Class<?> contract = contractType(type, reference);
-            return new Binding(type, contract, declaredInvariants(contract));
-        }
-    };
-    private static final ClassValue<List<Binding>> INVARIANTS = new ClassValue<>() {
-        @Override
-        protected List<Binding> computeValue(Class<?> type) {
-            var inherited = type.getSuperclass() == null ? List.<Binding>of()
-                    : get(type.getSuperclass());
-            var own = bindingFor(type);
-            if (own.invariants().isEmpty()) {
-                return inherited;
-            }
-            var result = new ArrayList<>(inherited);
-            result.add(own);
-            return List.copyOf(result);
+        protected MethodContractPlan computeValue(Class<?> type) {
+            return new MethodContractPlan(List.of(), withInvariants(ContractResolver.bindingsFor(type)));
         }
     };
 
     private ContractExecutor() {}
 
-    static Checks checksFor(Method targetMethod) {
-        var checks = CHECKS.get(targetMethod.getDeclaringClass())
-                .computeIfAbsent(targetMethod, ContractExecutor::resolve);
-        return checks == NONE ? null : checks;
+    static MethodContractPlan planFor(Method method, boolean delegate) {
+        return PLANS.get(method.getDeclaringClass()).computeIfAbsent(new Boundary(method, delegate),
+                ContractExecutor::resolve);
     }
 
-    static Binding bindingFor(Class<?> type) {
-        return BINDINGS.get(type);
+    static MethodContractPlan constructorPlanFor(Class<?> type) {
+        return CONSTRUCTOR_PLANS.get(type);
     }
 
-    static List<Binding> invariantBindingsFor(Class<?> type) {
-        return INVARIANTS.get(type);
-    }
-
-    private static Checks resolve(Method targetMethod) {
-        Class<?> targetType = targetMethod.getDeclaringClass();
-        Class<?> contractType = bindingFor(targetType).contractType();
-
-        // Walk contract classes only. A method inherited from the target is application code.
-        for (Class<?> type = contractType; type != targetType; type = type.getSuperclass()) {
-            for (Method candidate : type.getDeclaredMethods()) {
-                if (!matches(targetMethod, candidate)) {
-                    continue;
-                }
-                var phases = phasesOf(candidate);
-                var captures = OldValueStore.prepare(candidate, targetType, phases.post(), phases.oldSites());
-                return phases.pre() || phases.post()
-                        ? new Checks(candidate, phases.pre(), phases.post(), captures)
-                        : NONE;
+    private static MethodContractPlan resolve(Boundary boundary) {
+        Class<?> owner = boundary.method().getDeclaringClass();
+        var bindings = boundary.delegate() ? ContractResolver.introducedAt(owner)
+                : ContractResolver.bindingsFor(owner);
+        var checks = new ArrayList<MethodContractPlan.Check>();
+        for (var binding : bindings) {
+            Method candidate = contractMethod(boundary.method(), binding);
+            if (candidate == null) {
+                continue;
+            }
+            var phases = phasesOf(candidate);
+            var captures = OldValueStore.prepare(candidate, binding.targetType(), phases.post(), phases.oldSites());
+            if (phases.pre() || phases.post()) {
+                checks.add(new MethodContractPlan.Check(binding, candidate, phases.pre(), phases.post(), captures));
             }
         }
-        return NONE;
+        return new MethodContractPlan(checks, withInvariants(bindings));
+    }
+
+    private static List<ContractBinding> withInvariants(List<ContractBinding> bindings) {
+        return bindings.stream().filter(binding -> !binding.invariants().isEmpty()).toList();
+    }
+
+    private static Method contractMethod(Method targetMethod, ContractBinding binding) {
+        // Walk contract classes only. A method inherited from the target is application code.
+        for (Class<?> type = binding.contractType(); type != Object.class && type != binding.targetType();
+             type = type.getSuperclass()) {
+            for (Method candidate : type.getDeclaredMethods()) {
+                if (matches(targetMethod, candidate)) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
     }
 
     private static boolean matches(Method target, Method candidate) {
         int modifiers = candidate.getModifiers();
         return candidate.getName().equals(target.getName())
                 && Arrays.equals(candidate.getParameterTypes(), target.getParameterTypes())
-                && target.getReturnType().isAssignableFrom(candidate.getReturnType())
+                && (target.getReturnType().isAssignableFrom(candidate.getReturnType())
+                    || candidate.getReturnType().isAssignableFrom(target.getReturnType()))
                 && !candidate.isAnnotationPresent(ClassInvariant.class)
                 && !candidate.isBridge() && !candidate.isSynthetic()
                 && !Modifier.isAbstract(modifiers) && !Modifier.isNative(modifiers)
                 && !Modifier.isStatic(modifiers) && !Modifier.isPrivate(modifiers);
     }
 
-    private static Class<?> contractType(Class<?> target, ContractReference reference) {
-        Class<?> contract = reference.value();
-        if (contract == target || !target.isAssignableFrom(contract)) {
-            throw new UsageError(contract.getName() + " must extend " + target.getName());
-        }
-        return contract;
-    }
-
-    private static List<Method> declaredInvariants(Class<?> contract) {
+    static List<Method> declaredInvariants(Class<?> contract) {
         var annotated = new HashMap<String, Method>();
         for (Method method : contract.getDeclaredMethods()) {
             if (method.isSynthetic() || !method.isAnnotationPresent(ClassInvariant.class)) {
@@ -199,11 +179,7 @@ final class ContractExecutor {
         }
     }
 
-    static void evaluate(InvocationContext frame) {
-        evaluate(frame, frame.binding, frame.checks.method(), frame.arguments);
-    }
-
-    static void evaluate(InvocationContext frame, Binding binding, Method method, Object... arguments) {
+    static void evaluate(InvocationContext frame, ContractBinding binding, Method method, Object... arguments) {
         try {
             Object contract = frame.contracts.get(binding.targetType());
             if (contract == null) {
@@ -221,7 +197,7 @@ final class ContractExecutor {
         }
     }
 
-    private static Object newContract(Binding binding, Object target) throws ReflectiveOperationException {
+    private static Object newContract(ContractBinding binding, Object target) throws ReflectiveOperationException {
         Class<?> contractType = binding.contractType();
         Class<?> targetType = binding.targetType();
         Object[] arguments = new Object[0];
@@ -240,7 +216,7 @@ final class ContractExecutor {
             throw new IllegalAccessException(constructor.toString());
         }
         Object contract = constructor.newInstance(arguments);
-        for (Class<?> type = contractType; type != targetType; type = type.getSuperclass()) {
+        for (Class<?> type = contractType; type != Object.class && type != targetType; type = type.getSuperclass()) {
             for (var field : type.getDeclaredFields()) {
                 if (!field.isAnnotationPresent(Target.class)) {
                     continue;

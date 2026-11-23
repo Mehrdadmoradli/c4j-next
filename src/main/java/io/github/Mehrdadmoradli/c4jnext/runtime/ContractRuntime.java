@@ -13,31 +13,35 @@ public final class ContractRuntime {
 
     private ContractRuntime() {}
 
-    public static InvocationContext enter(Object target, Method method, Object[] arguments) {
+    public static InvocationContext enter(Object target, Method method, Object[] arguments, boolean delegate) {
         // Calls from contract code run their bodies under the active evaluation.
         // Calls from application bodies enter normally and get their own frame.
         if (evaluating()) {
             return null;
         }
-        var binding = ContractExecutor.bindingFor(method.getDeclaringClass());
-        var invariants = ContractExecutor.invariantBindingsFor(method.getDeclaringClass());
-        var checks = ContractExecutor.checksFor(method);
-        if (checks == null && invariants.isEmpty()) {
+        var plan = ContractExecutor.planFor(method, delegate);
+        if (plan.checks().isEmpty() && plan.invariants().isEmpty()) {
             return null;
         }
-        var frame = new InvocationContext(target, method, binding, arguments, checks, invariants, false);
+        var frame = new InvocationContext(target, method, arguments, plan, false);
         push(frame);
         boolean entered = false;
         try {
             checkInvariants(frame);
-            if (checks != null && checks.pre()) {
-                frame.phase = PRE;
-                ContractExecutor.evaluate(frame);
+            frame.phase = PRE;
+            for (var check : plan.checks()) {
+                if (check.pre()) {
+                    ContractExecutor.evaluate(frame, check.binding(), check.method(), frame.arguments);
+                }
             }
-            if (checks != null && !checks.captures().isEmpty()) {
-                frame.phase = CAPTURE;
-                frame.oldValues = new OldValueStore();
-                frame.oldValues.save(checks.captures(), target);
+            frame.phase = CAPTURE;
+            for (var check : plan.checks()) {
+                if (!check.captures().isEmpty()) {
+                    if (frame.oldValues == null) {
+                        frame.oldValues = new OldValueStore();
+                    }
+                    frame.oldValues.save(check.captures(), target);
+                }
             }
             frame.phase = BODY;
             entered = true;
@@ -59,9 +63,11 @@ public final class ContractRuntime {
                 return;
             }
             frame.result = result;
-            if (frame.checks != null && frame.checks.post()) {
-                frame.phase = POST;
-                ContractExecutor.evaluate(frame);
+            frame.phase = POST;
+            for (var check : frame.plan.checks()) {
+                if (check.post()) {
+                    ContractExecutor.evaluate(frame, check.binding(), check.method(), frame.arguments);
+                }
             }
             checkInvariants(frame);
         } finally {
@@ -75,11 +81,11 @@ public final class ContractRuntime {
     }
 
     static void checkConstructed(Object target) {
-        var invariants = ContractExecutor.invariantBindingsFor(target.getClass());
-        if (invariants.isEmpty()) {
+        var plan = ContractExecutor.constructorPlanFor(target.getClass());
+        if (plan.invariants().isEmpty()) {
             return;
         }
-        var frame = new InvocationContext(target, null, null, new Object[0], null, invariants, true);
+        var frame = new InvocationContext(target, null, new Object[0], plan, true);
         push(frame);
         try {
             checkInvariants(frame);
@@ -89,11 +95,12 @@ public final class ContractRuntime {
     }
 
     private static void checkInvariants(InvocationContext frame) {
-        if (frame.invariants.isEmpty() || (!frame.constructor && ConstructionRuntime.isConstructing(frame.target))) {
+        if (frame.plan.invariants().isEmpty()
+                || (!frame.constructor && ConstructionRuntime.isConstructing(frame.target))) {
             return;
         }
         frame.phase = INVARIANT;
-        for (var binding : frame.invariants) {
+        for (var binding : frame.plan.invariants()) {
             for (var method : binding.invariants()) {
                 ContractExecutor.evaluate(frame, binding, method);
             }
